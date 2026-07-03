@@ -6,7 +6,7 @@
 
 pthread_mutex_t g_mutex_log;
 
-void sincronizacao_destruir(void) {
+void sincronizacao_inicializar(void) {
     if (pthread_mutex_init(&g_mutex_log, NULL) != 0) {
         fprintf(stderr, "Erro ao inicializar mutex de log\n");
         exit(EXIT_FAILURE);

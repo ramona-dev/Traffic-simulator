@@ -1,5 +1,6 @@
 #ifndef SINCRONIZACAO_H
 #define SINCRONIZACAO_H
+#include <pthread.h>
 
 extern pthread_mutex_t g_mutex_log;
 
