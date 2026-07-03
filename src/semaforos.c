@@ -1,151 +1,112 @@
+#ifndef SEMAFOROS_H
+#define SEMAFOROS_H
+
+#include <pthread.h>
+#include <semaphore.h>
 #include "mapa.h"
-#include <stdio.h>
-#include <stdlib.h>
 
 /*
- * Layout lógico (replica Mapa.txt):
+ * Controle de sinais de trânsito por cruzamento.
  *
- *   Linha de cruzamento 0 -> via horizontal DUPLA  (---+---+---+---+---)
- *   Linha de cruzamento 1 -> via horizontal ÚNICA  (>>>+>>>+>>>+>>>+>>>) sentido LESTE
- *   Linha de cruzamento 2 -> via horizontal DUPLA
- *   Linha de cruzamento 3 -> via horizontal ÚNICA  sentido LESTE
+ * Cada cruzamento possui um estado de sinal para o eixo Norte-Sul (NS) e
+ * para o eixo Leste-Oeste (LO). Quando um eixo está VERDE, o eixo
+ * perpendicular está obrigatoriamente VERMELHO (segurança da transição).
  *
- *   Todas as colunas de cruzamento -> via vertical DUPLA (sentido N<->S)
- *
- * Cada par de cruzamentos consecutivos (na mesma linha ou coluna) é ligado
- * por um trecho de TAM_TRECHO células de rua.
+ * Mecanismos usados:
+ *  - mutex: protege o estado do sinal (cor, contagem, prioridade de
+ *    ambulância) contra acesso concorrente.
+ *  - variável de condição: usada pelos carros para dormir até a via
+ *    desejada ficar verde (sem espera ocupada).
+ *  - semáforo (sem_t) por cruzamento: limita a quantidade de veículos
+ *    simultaneamente "dentro" do cruzamento (capacidade limitada),
+ *    evitando colisões na célula central mesmo com sinal verde.
  */
 
-/* (Tipo de via horizontal é determinado em semaforos.c, via
- * semaforos_tipo_via_horizontal, para uso na lógica de movimento dos
- * veículos.) */
+typedef enum {
+    SINAL_VERMELHO = 0,
+    SINAL_VERDE = 1
+} CorSinal;
 
-void mapa_coord_cruzamento(int linha_cruz, int col_cruz, int *linha, int *col) {
-    *linha = linha_cruz * (TAM_TRECHO + 1);
-    *col   = col_cruz   * (TAM_TRECHO + 1);
-}
+typedef enum {
+    EIXO_NS = 0,  /* Norte-Sul   (vertical)   */
+    EIXO_LO = 1   /* Leste-Oeste (horizontal) */
+} EixoVia;
 
-int mapa_e_cruzamento(int linha, int col) {
-    if (linha % (TAM_TRECHO + 1) != 0) return 0;
-    if (col   % (TAM_TRECHO + 1) != 0) return 0;
-    int linha_cruz = linha / (TAM_TRECHO + 1);
-    int col_cruz   = col   / (TAM_TRECHO + 1);
-    return (linha_cruz >= 0 && linha_cruz < MAPA_LINHAS_CRUZ &&
-            col_cruz   >= 0 && col_cruz   < MAPA_COLS_CRUZ);
-}
+#define CAPACIDADE_CRUZAMENTO 1  /* nº de veículos simultâneos dentro do cruzamento */
 
-static void celula_init(Celula *c, TipoCelula tipo) {
-    c->tipo = tipo;
-    c->ocupada = 0;
-    c->ocupante_id = -1;
-    pthread_mutex_init(&c->mutex, NULL);
-}
+typedef struct {
+    int linha_cruz, col_cruz;     /* índice lógico do cruzamento na malha */
+    CorSinal sinal[2];            /* sinal[EIXO_NS], sinal[EIXO_LO] */
 
-void mapa_inicializar(Mapa *mapa) {
-    /* 1) Começa tudo como PAREDE (área não navegável) */
-    for (int i = 0; i < MAPA_LINHAS; i++) {
-        for (int j = 0; j < MAPA_COLS; j++) {
-            celula_init(&mapa->celulas[i][j], CELULA_PAREDE);
-        }
-    }
+    int ambulancia_solicitando;   /* >0 se há ambulância pedindo prioridade */
+    int eixo_solicitado_ambulancia;
 
-    /* 2) Marca os cruzamentos */
-    for (int lc = 0; lc < MAPA_LINHAS_CRUZ; lc++) {
-        for (int cc = 0; cc < MAPA_COLS_CRUZ; cc++) {
-            int linha, col;
-            mapa_coord_cruzamento(lc, cc, &linha, &col);
-            mapa->celulas[linha][col].tipo = CELULA_CRUZAMENTO;
-        }
-    }
+    pthread_mutex_t mutex;        /* protege o estado acima */
+    pthread_cond_t  cond_sinal;   /* notifica troca de sinal */
 
-    /* 3) Trechos horizontais entre cruzamentos da mesma linha */
-    for (int lc = 0; lc < MAPA_LINHAS_CRUZ; lc++) {
-        int linha, col_a;
-        mapa_coord_cruzamento(lc, 0, &linha, &col_a);
-        for (int cc = 0; cc < MAPA_COLS_CRUZ - 1; cc++) {
-            int l, cini, cfim;
-            mapa_coord_cruzamento(lc, cc, &l, &cini);
-            mapa_coord_cruzamento(lc, cc + 1, &l, &cfim);
-            for (int c = cini + 1; c < cfim; c++) {
-                mapa->celulas[l][c].tipo = CELULA_RUA;
-            }
-        }
-        /* trechos de extremidade (antes do primeiro e após o último cruzamento) */
-        int l0, c0;
-        mapa_coord_cruzamento(lc, 0, &l0, &c0);
-        for (int c = c0 - TAM_TRECHO; c < c0; c++) {
-            if (c >= 0) mapa->celulas[l0][c].tipo = CELULA_RUA;
-        }
-        int lN, cN;
-        mapa_coord_cruzamento(lc, MAPA_COLS_CRUZ - 1, &lN, &cN);
-        for (int c = cN + 1; c <= cN + TAM_TRECHO; c++) {
-            if (c < MAPA_COLS) mapa->celulas[lN][c].tipo = CELULA_RUA;
-        }
-    }
+    sem_t *sem_capacidade;        /* semáforo de capacidade do cruzamento */
+} Cruzamento;
 
-    /* 4) Trechos verticais entre cruzamentos da mesma coluna */
-    for (int cc = 0; cc < MAPA_COLS_CRUZ; cc++) {
-        for (int lc = 0; lc < MAPA_LINHAS_CRUZ - 1; lc++) {
-            int lini, c, lfim, c2;
-            mapa_coord_cruzamento(lc, cc, &lini, &c);
-            mapa_coord_cruzamento(lc + 1, cc, &lfim, &c2);
-            for (int l = lini + 1; l < lfim; l++) {
-                mapa->celulas[l][c].tipo = CELULA_RUA;
-            }
-        }
-        /* extremidades verticais (entrada pelo topo / saída pela base) */
-        int l0, c0;
-        mapa_coord_cruzamento(0, cc, &l0, &c0);
-        for (int l = l0 - TAM_TRECHO; l < l0; l++) {
-            if (l >= 0) mapa->celulas[l][c0].tipo = CELULA_RUA;
-        }
-        int lN, cN;
-        mapa_coord_cruzamento(MAPA_LINHAS_CRUZ - 1, cc, &lN, &cN);
-        for (int l = lN + 1; l <= lN + TAM_TRECHO; l++) {
-            if (l < MAPA_LINHAS) mapa->celulas[l][cN].tipo = CELULA_RUA;
-        }
-    }
-}
+typedef struct {
+    Cruzamento cruzamentos[MAPA_LINHAS_CRUZ][MAPA_COLS_CRUZ];
+    int periodo_ticks;            /* ticks até alternância automática do sinal */
+} ControleSemaforos;
 
-void mapa_destruir(Mapa *mapa) {
-    for (int i = 0; i < MAPA_LINHAS; i++) {
-        for (int j = 0; j < MAPA_COLS; j++) {
-            pthread_mutex_destroy(&mapa->celulas[i][j].mutex);
-        }
-    }
-}
+/* Inicializa todos os cruzamentos com sinal inicial e capacidade. */
+void semaforos_inicializar(ControleSemaforos *ctrl, int periodo_ticks);
 
-int mapa_celula_valida(Mapa *mapa, int linha, int col) {
-    if (linha < 0 || linha >= MAPA_LINHAS || col < 0 || col >= MAPA_COLS) {
-        return 0;
-    }
-    TipoCelula t = mapa->celulas[linha][col].tipo;
-    return (t == CELULA_RUA || t == CELULA_CRUZAMENTO);
-}
+/* Libera mutexes, condvars e semáforos. */
+void semaforos_destruir(ControleSemaforos *ctrl);
 
-int mapa_tentar_ocupar(Mapa *mapa, int linha, int col, int veiculo_id) {
-    if (!mapa_celula_valida(mapa, linha, col)) return 0;
+/* Thread responsável por alternar os sinais periodicamente (a cada N ticks),
+ * respeitando pedidos de prioridade de ambulância. */
+void *semaforos_thread_controlador(void *arg);
 
-    Celula *c = &mapa->celulas[linha][col];
-    int sucesso = 0;
+/*
+ * Bloqueia o veículo até que o sinal do cruzamento (linha_cruz,col_cruz)
+ * para o eixo informado esteja VERDE. Usa variável de condição: dorme sem
+ * consumir CPU. Retorna 0 se foi liberado por encerramento da simulação
+ * (g_semaforos_encerrar) sem o sinal ter ficado verde, ou 1 se o sinal
+ * está de fato verde.
+ */
+int semaforo_esperar_verde(Cruzamento *cruz, EixoVia eixo);
 
-    pthread_mutex_lock(&c->mutex);
-    if (!c->ocupada) {
-        c->ocupada = 1;
-        c->ocupante_id = veiculo_id;
-        sucesso = 1;
-    }
-    pthread_mutex_unlock(&c->mutex);
+/* Ambulância solicita prioridade de passagem no cruzamento para um eixo. */
+void semaforo_solicitar_prioridade_ambulancia(Cruzamento *cruz, EixoVia eixo);
 
-    return sucesso;
-}
+/* Adquire uma "vaga" de capacidade dentro do cruzamento (sem_wait com
+ * checagem periódica de encerramento, sem busy-waiting). Retorna 1 se
+ * conseguiu entrar, 0 se desistiu por encerramento da simulação. */
+int semaforo_entrar_cruzamento(Cruzamento *cruz);
 
-void mapa_liberar(Mapa *mapa, int linha, int col) {
-    if (linha < 0 || linha >= MAPA_LINHAS || col < 0 || col >= MAPA_COLS) return;
-    Celula *c = &mapa->celulas[linha][col];
+/* Libera a vaga de capacidade do cruzamento (sem_post). */
+void semaforo_sair_cruzamento(Cruzamento *cruz);
 
-    pthread_mutex_lock(&c->mutex);
-    c->ocupada = 0;
-    c->ocupante_id = -1;
-    pthread_mutex_unlock(&c->mutex);
-}
+/* Acesso auxiliar a um cruzamento pela posição lógica. */
+Cruzamento *semaforos_get_cruzamento(ControleSemaforos *ctrl, int linha_cruz, int col_cruz);
+
+/*
+ * Acorda explicitamente todas as threads de veículos que possam estar
+ * bloqueadas em semaforo_esperar_verde, em qualquer cruzamento. Deve ser
+ * chamado pelo main logo após sinalizar o encerramento da simulação
+ * (g_semaforos_encerrar = 1), garantindo que nenhuma thread de veículo
+ * fique presa indefinidamente em pthread_cond_wait quando o programa
+ * está sendo finalizado.
+ */
+void semaforos_broadcast_encerramento(ControleSemaforos *ctrl);
+
+/* Variável global para encerrar a thread controladora junto com a simulação.
+ * Declarada como atomic_int (C11, <stdatomic.h>): operações de leitura e
+ * escrita são atômicas e com ordenação de memória sequencialmente
+ * consistente por padrão, o que é a forma correta e portável de
+ * compartilhar uma flag booleana simples entre threads sem usar um mutex
+ * completo, e é reconhecida como "synchronized" por ferramentas como o
+ * ThreadSanitizer (evitando falsos positivos de data race). */
+#include <stdatomic.h>
+extern atomic_int g_semaforos_encerrar;
+
+/* Retorna o tipo de via horizontal (dupla ou única) para uma linha de
+ * cruzamento, conforme definido no mapa do projeto (Mapa.txt). */
+TipoVia semaforos_tipo_via_horizontal(int linha_cruz);
+
+#endif /* SEMAFOROS_H */
