@@ -277,8 +277,8 @@ visualização encerradas via `pthread_join`, sem deadlock).
 
 | Integrante | Módulo(s) | Responsabilidade |
 |---|---|---|
-| _(nome)_ | `mapa.c` / `mapa.h` | Malha viária, células, ocupação atômica |
-| _(nome)_ | `relogio.c` / `relogio.h` | Tick global, variável de condição |
-| _(nome)_ | `semaforos.c` / `semaforos.h` | Sinais, prioridade da ambulância |
-| _(nome)_ | `veiculos.c` / `veiculos.h` | Lógica de movimento dos veículos |
-| _(nome)_ | `sincronizacao.c` / `main.c` | Anti-deadlock, log thread-safe, visualização |
+| _(Heberthy)_ | `mapa.c` / `mapa.h` | Malha viária, células, ocupação atômica |
+| _(Ramona)_ | `relogio.c` / `relogio.h` | Tick global, variável de condição |
+| _(Pedro Kauan)_ | `semaforos.c` / `semaforos.h` | Sinais, prioridade da ambulância |
+| _(Joaquim)_ | `veiculos.c` / `veiculos.h` | Lógica de movimento dos veículos |
+| _(Jose Welton)_ | `sincronizacao.c` / `main.c` | Anti-deadlock, log thread-safe, visualização |
