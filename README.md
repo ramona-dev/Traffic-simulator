@@ -1,5 +1,7 @@
 # Traffic-simulator
 
+![C11](https://img.shields.io/badge/C-11-blue) ![Pthreads](https://img.shields.io/badge/Concurrency-Pthreads-informational) ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20(MSYS2)-lightgrey)
+
 Simulador de tráfego urbano em C, desenvolvido para a disciplina de
 **Sistemas Operacionais**, com foco no aprendizado de **Concorrência,
 Sincronização e Deadlocks**.
@@ -50,6 +52,13 @@ sudo apt-get install -y build-essential   # gcc + make, se ainda não tiver
 pacman -S --needed mingw-w64-x86_64-gcc make
 ```
 
+### macOS
+
+> ⚠️ **Atenção:** o macOS não implementa semáforos POSIX *unnamed*
+> (`sem_init` retorna erro nativamente). Este projeto usa `sem_init`
+> diretamente, então **não builda em macOS sem uma camada de
+> compatibilidade** (ex.: substituir por `dispatch_semaphore_t` ou
+> semáforos nomeados). Use Linux ou WSL/MSYS2 no Windows por enquanto.
 
 ## Estrutura do projeto
 
@@ -75,7 +84,7 @@ Traffic-simulator/
 │   ├── planejamento.md        // divisão de tarefas e decisões
 │   └── Mapa-referencia.txt    // mapa lógico original que inspirou a malha
 │
-├── README.md                 
+├── README.md                 // este arquivo
 └── Makefile
 ```
 
@@ -101,7 +110,7 @@ Traffic-simulator/
 
    ```bash
    git clone https://github.com/ramona-dev/Traffic-simulator.git
-   cd /workspaces/Traffic-simulator
+   cd Traffic-simulator
    ```
 
 3. **Compile o projeto:**
@@ -113,7 +122,10 @@ Traffic-simulator/
    Isso cria a pasta `build/` com os arquivos `.o` de cada módulo e gera o
    binário `traffic-simulator` na raiz do projeto. A saída esperada é uma
    sequência de linhas `gcc ... -c src/xxx.c -o build/xxx.o`, seguida da
-   linha final de link (`gcc build/*.o -o traffic-simulator`).
+   linha final de link (`gcc build/*.o -o traffic-simulator`), **sem
+   nenhuma linha de warning**. Se aparecer algum warning do compilador
+   (`-Wall -Wextra` estão ativos), revise o código antes de prosseguir —
+   ele sinaliza algo que pode ser um bug real.
 
 4. **Confirme que o binário foi criado:**
 
@@ -273,12 +285,10 @@ visualização encerradas via `pthread_join`, sem deadlock).
 
 ## Integrantes e responsabilidades
 
-<!-- TODO: substituir pelos nomes reais da equipe antes da entrega -->
-
 | Integrante | Módulo(s) | Responsabilidade |
 |---|---|---|
-| _(Heberthy)_ | `mapa.c` / `mapa.h` | Malha viária, células, ocupação atômica |
-| _(Ramona)_ | `relogio.c` / `relogio.h` | Tick global, variável de condição |
+| _(Heberthy Samir)_ | `mapa.c` / `mapa.h` | Malha viária, células, ocupação atômica |
+| _(Ramona Vitória)_ | `relogio.c` / `relogio.h` | Tick global, variável de condição |
 | _(Pedro Kauan)_ | `semaforos.c` / `semaforos.h` | Sinais, prioridade da ambulância |
-| _(Joaquim)_ | `veiculos.c` / `veiculos.h` | Lógica de movimento dos veículos |
-| _(Jose Welton)_ | `sincronizacao.c` / `main.c` | Anti-deadlock, log thread-safe, visualização |
+| _(Joaquim Arthur)_ | `veiculos.c` / `veiculos.h` | Lógica de movimento dos veículos |
+| _(José Welton/Ramona)_ | `sincronizacao.c` / `main.c` | Anti-deadlock, log thread-safe, visualização |
