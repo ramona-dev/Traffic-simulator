@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#include <bits/pthreadtypes.h>
 
 pthread_mutex_t g_mutex_log;
 
@@ -22,12 +21,13 @@ void log_evento(const char *formato, ...) {
     pthread_mutex_lock(&g_mutex_log);
 
     va_start(args, formato);
-    vprintf(stdout, formato, args);
+    vfprintf(stdout, formato, args);
     va_end(args);
     fflush(stdout);
 
     pthread_mutex_unlock(&g_mutex_log);
 }
+
 
 void travar_em_ordem(pthread_mutex_t *mutexA, int idA,
                       pthread_mutex_t *mutexB, int idB) {
@@ -51,11 +51,11 @@ void destravar_em_ordem(pthread_mutex_t *mutexA, int idA,
         pthread_mutex_unlock(mutexA);
         return;
     }
-
+    /* ordem de destravamento não é crítica para deadlock, mas mantemos
+     * o inverso da ordem de aquisição por boa prática. */
     if (idA < idB) {
         pthread_mutex_unlock(mutexB);
         pthread_mutex_unlock(mutexA);
-        
     } else {
         pthread_mutex_unlock(mutexA);
         pthread_mutex_unlock(mutexB);

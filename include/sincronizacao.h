@@ -4,7 +4,7 @@
 
 extern pthread_mutex_t g_mutex_log;
 
-void sincrnizacao_inicializar(void);
+void sincronizacao_inicializar(void);
 
 void sincronizacao_destruir(void);
 
