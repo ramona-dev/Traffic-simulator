@@ -272,17 +272,6 @@ final não apresentou nenhum warning do ThreadSanitizer e finalizou
 corretamente (todas as 15 threads de veículo + relógio + semáforos +
 visualização encerradas via `pthread_join`, sem deadlock).
 
-## Documentação adicional
-
-- [`docs/relatorio.md`](docs/relatorio.md): explica as decisões de
-  implementação (mapa, threads, mecanismos de sincronização, ausência de
-  espera ocupada e estratégia contra deadlock), incluindo os bugs
-  encontrados durante o desenvolvimento e como foram corrigidos.
-- [`docs/planejamento.md`](docs/planejamento.md): divisão de tarefas entre
-  os integrantes da equipe e principais decisões de planejamento.
-- [`docs/Mapa-referencia.txt`](docs/Mapa-referencia.txt): mapa lógico
-  original (ASCII) que inspirou a malha 4×4 implementada.
-
 ## Integrantes e responsabilidades
 
 | Integrante | Módulo(s) | Responsabilidade |
